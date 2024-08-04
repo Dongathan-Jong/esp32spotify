@@ -471,4 +471,121 @@ bool nextLyric() {
         return false; //error
     }
 }
+
+size_t printWrap(const char* str, const char end) {
+    lcd.clear();
+    char c;
+    size_t len = 0;
+    unsigned int col = 0;
+    unsigned int line = 0;
+    while((c = *str++) != end) {
+        len++;
+        unsigned int wcnt = 1;
+        if(c == ' ') {
+            const char* tmp = str;
+            while(*tmp && *tmp != ' ' && *tmp++ != end) {
+                wcnt++;
+            }
+            if(col == 0) {
+                continue;
+            } else if(col + wcnt > LCD_COLS && wcnt < LCD_COLS) {
+                lcd.setCursor(0, ++line);
+                col = 0;
+                continue;
+            }
+        }
+        if(col < LCD_COLS && line < LCD_LINES) {
+            lcd.write(c);
+        }
+        if(++col == LCD_COLS) {
+            lcd.setCursor(0, ++line);
+            col = 0;
+        }
+    }
+    return len;
+}
+
+void displayLyric() {
+    p_lyric_current = p_lyric_next;
+    size_t len = printWrap(p_lyric_next, '\n');
+    p_lyric_next+= (len+1);
+    if(nextLyric()) {
+        unsigned int lyric_delay = next_lyric_ms - ((unsigned int)(millis() - playback.millis) + playback.progress);
+        displayTicker.once_ms(lyric_delay, displayLyric);
+    }
+}
+
+void startLyric(bool force) {
+    unsigned int progress_ms = (millis() - playback.millis) + playback.progress;
+    const char* last_lyric = NULL;
+    while(progress_ms > next_lyric_ms) {
+        last_lyric = p_lyric_next;
+        while(*p_lyric_next++ != '\n'); // skip
+        if(!nextLyric() || !p_lyric_next) {
+            break;
+        }
+    }
+    // Display the last lyric
+    if(force || p_lyric_current != last_lyric) {
+        Serial.println("<RESYNC>");
+        if(last_lyric) {
+            printWrap(last_lyric, '\n');
+        } else if(!force) {
+            lcd.clear();
+        }
+        p_lyric_current = last_lyric;
+    }
+    // Schedule the next lyric
+    if(p_lyric_next) {
+        unsigned int lyric_delay = next_lyric_ms - progress_ms;
+        displayTicker.once_ms(lyric_delay, displayLyric);
+    }
+}
+
+void setup() {
+    Serial.begin(115200);
+    if(!LittleFS.begin()) {
+        Serial.println(F("FATAL: filesystem error"));
+        while(1) yield();
+    }
+    lcd.begin();
+    lcd.clear();
+    lcd.print("Connecting to");
+    lcd.setCursor(0,1);
+    lcd.print(WIFI_SSID);
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
+    while(WiFi.status() != WL_CONNECTED) {
+        delay(1000);
+        Serial.print('.');
+    }
+    Serial.println(F("Connected"));
+    Serial.println(WiFi.localIP());
+    lcd.clear();
+    lcd.print("Connected");
+    lcd.setCursor(0,1);
+    lcd.print(WiFi.localIP());
+
+    String refreshToken = loadRefreshToken();
+    if (refreshToken == "") {
+        lcd.setCursor(0,0);
+        lcd.print("Please visit");
+        lcd.setCursor(0,2);
+        lcd.print("in your web browser");
+        String authCode = spotifyAuth();
+        getToken(false, authCode);
+        lcd.clear();
+        lcd.print("Connected!");
+    } else {
+        getToken(true, refreshToken);
+    }
+    if (auth.refreshToken != "") {
+        saveRefreshToken(auth.refreshToken);
+    } else if(auth.accessToken == "") {
+        Serial.println(F("Auth failed! Please check API credentials."));
+        lcd.clear();
+        lcd.print("Spotify auth failed!");
+        LittleFS.remove(F("/sptoken.txt"));
+        while(1) yield();
+    }
+}
 }
