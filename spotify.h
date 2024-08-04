@@ -148,7 +148,6 @@ int code = http.GET();
     Serial.print("Response code: ");
     Serial.println(code);
     if(code == 301) {
-        // Redirect: save the cookies and send them back.
         mxmCookie = http.header("Set-Cookie");
         delay(100);
         http.addHeader("Cookie", mxmCookie);
@@ -157,6 +156,94 @@ int code = http.GET();
         Serial.println(code);
     } else if(code != 200) {
         return;
+    }
+ Serial.println("connection failed");
+        return;
+    }
+
+    String codeParam = "code";
+    String grantType = "authorization_code";
+    if (refresh) {
+        grantType = codeParam = "refresh_token";
+    }
+    String authorization = base64::encode(F(SP_CLIENT_ID ":" SP_CLIENT_SECRET), false);
+    // This will send the request to the server
+    String content = "grant_type=" + grantType + "&" + codeParam + "=" + code + "&redirect_uri=" SP_REDIRECT_URI;
+    String request = String("POST ") + url + " HTTP/1.1\r\n" +
+                             "Host: " + host + "\r\n" +
+                             "Authorization: Basic " + authorization + "\r\n" +
+                             "Content-Length: " + String(content.length()) + "\r\n" +
+                             "Content-Type: application/x-www-form-urlencoded\r\n" +
+                             "Connection: close\r\n\r\n" +
+                             content;
+    client.print(request);
+
+    unsigned long req_start = millis();
+    while(!client.available()) {
+        if(millis() - req_start > REQUEST_TIMEOUT_MS) {
+            Serial.println(F("Request Timeout"));
+            return;
+        }
+        delay(10);
+    }
+
+    while (client.connected()) {
+        String line = client.readStringUntil('\n');
+        if (line == "\r") {
+                break;
+        }
+    }
+
+    StaticJsonDocument<32> filter;
+    filter["access_token"] = true;
+    filter["refresh_token"] = true;
+    StaticJsonDocument<512> doc;
+    DeserializationError error = deserializeJson(doc, client, DeserializationOption::Filter(filter));
+    if (error) {
+        Serial.print(F("deserializeJson() failed: "));
+        Serial.println(error.f_str());
+        return;
+    }
+    auth.accessToken = (const char*)doc["access_token"];
+    auth.refreshToken = (const char*)doc["refresh_token"];
+}
+
+int updatePlayback() {
+    int ret_code = 0;
+    WiFiClientSecure client;
+    client.setInsecure();
+
+    String host = "api.spotify.com";
+    const int port = 443;
+    String url = "/v1/me/player/currently-playing";
+    if (!client.connect(host.c_str(), port)) {
+        Serial.println(F("Connection failed"));
+        return ret_code;
+    }
+
+    String request = "GET " + url + " HTTP/1.1\r\n" +
+                             "Host: " + host + "\r\n" +
+                             "Authorization: Bearer " + auth.accessToken + "\r\n" +
+                             "Connection: close\r\n\r\n";
+    client.print(request);
+
+    unsigned long req_start = millis();
+    while(!client.available()) {
+        if(millis() - req_start > REQUEST_TIMEOUT_MS) {
+            Serial.println(F("Request Timeout"));
+            return ret_code;
+        }
+        delay(10);
+    }
+
+    while (client.connected()) {
+        String line = client.readStringUntil('\n');
+        if(line.startsWith(F("HTTP/1"))) {
+            ret_code = line.substring(9, line.indexOf(' ', 9)).toInt();
+        }
+        if(line == "\r") {
+                break;
+        }
     }
 
     StaticJsonDocument<192> filter;
