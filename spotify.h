@@ -1,8 +1,3 @@
-#include <I2CIO.h>
-#include <LCD.h>
-#include <LiquidCrystal_I2C.h>
-
-
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <time.h>
@@ -11,18 +6,94 @@
 #include <ESP8266WebServer.h>
 #include <ArduinoJson.h>
 #include <ESP8266HTTPClient.h>
-
-#include <Wire.h> 
-
+#include <Ticker.h>
 
 #include "secrets.h"
+#include "lcd2004.h"
 
-#define PLAYBACK_REFRSH_INTERVAL    5000
-#define PLAYBACK_REFRESH_MARGIN     3000
-#define PLAYBACK_RETRY_INTERVAL     250
+#define PLAYBACK_REFRSH_INTERVAL        2000
+#define PLAYBACK_RETRY_INTERVAL         250
+#define REQUEST_TIMEOUT_MS              500
 
-LiquidCrystal_I2C lcd(0x27,2,1,0,4,5,6,7,3,POSITIVE);
+LCD2004 lcd(2);
+Ticker displayTicker;
 ESP8266WebServer server(80);
+
+typedef struct {
+    String accessToken;
+    String refreshToken;
+} SpotifyToken;
+SpotifyToken auth;
+
+typedef struct {
+    unsigned long millis;
+    unsigned int progress;
+    unsigned int duration;
+    String track_name;
+    String album_name;
+    String artist_name;
+    String track_id;
+    bool playing;
+} SpotifyPlayback;
+SpotifyPlayback playback;
+
+String lastTrack;
+
+StaticJsonDocument<12288> lyricDoc;
+const char* p_lyric_start;
+const char* p_lyric_next = NULL;
+const char* p_lyric_current = NULL;
+unsigned int next_lyric_ms;
+
+String spotifyAuth() {
+    String oneWayCode = "";
+
+    if(!MDNS.begin(MDNS_HOSTNAME)) {
+        Serial.println(F("FATAL: MDNS error"));
+        while(1) yield();
+    }
+    Serial.println(F("mDNS started"));
+
+    server.on("/", []() {
+        server.sendHeader("Location", F("https://accounts.spotify.com/authorize/?client_id=" SP_CLIENT_ID \
+                                        "&response_type=code&redirect_uri=" SP_REDIRECT_URI \
+                                        "&scope=user-read-private%20user-read-currently-playing%20user-read-playback-state"), true);
+        server.send ( 302, "text/plain", "");
+    });
+
+    // Retrieve auth code returned by Spotify
+    server.on ("/callback/", [&oneWayCode](){
+        if(!server.hasArg("code")) {
+            server.send(500, "text/plain", "BAD ARGS");
+        } else {
+            oneWayCode = server.arg("code");
+            server.send (200, "text/html", F("Spotify authorization complete. You can close this window."));
+        }
+    });
+
+    server.begin();
+    Serial.println(F("HTTP server started"));
+
+    while(oneWayCode == "") {
+        server.handleClient();
+        MDNS.update();
+        yield();
+    }
+    server.stop();
+    MDNS.close();
+    return oneWayCode;
+}
+
+void getToken(bool refresh, String code) {
+    WiFiClientSecure client;
+    client.setInsecure();
+    const char* host = "accounts.spotify.com";
+    const int port = 443;
+    String url = "/api/token";
+    if (!client.connect(host, port)) {
+        Serial.println("connection failed");
+        return;
+    }
 
 
 
