@@ -294,15 +294,181 @@ String loadRefreshToken() {
     return "";
 }
 
+if(ret_code == 200) {
+        StaticJsonDocument<192> filter;
+        filter["progress_ms"] = true;
+        filter["is_playing"] = true;
+        JsonObject filter_item = filter.createNestedObject("item");
+        filter_item["name"] = true;
+        filter_item["album"]["name"] = true;
+        filter_item["duration_ms"] = true;
+        filter_item["id"] = true;
+        filter_item["artists"][0]["name"] = true;
+        StaticJsonDocument<512> doc;
 
-unsigned int parseInt(const char* ptr) {
-  unsigned int ret = 0;
-  while(*ptr >= '0' && *ptr <= '9') {
-    ret *= 10;
-    ret += (*ptr++ - '0');
-  }
-  return ret;
+        DeserializationError error = deserializeJson(doc, client, DeserializationOption::Filter(filter));
+        if (error) {
+            Serial.print(F("deserializeJson() failed: "));
+            Serial.println(error.f_str());
+            return false;
+        }
+
+        playback.progress = doc["progress_ms"];
+
+        JsonObject item = doc["item"];
+        playback.album_name = (const char*)item["album"]["name"];
+        playback.artist_name = (const char*)item["artists"][0]["name"];
+        playback.duration = item["duration_ms"];
+        playback.track_id = (const char*)item["id"];
+        playback.track_name = (const char*)item["name"];
+        playback.playing = doc["is_playing"];
+
+        playback.millis = millis();
+    }
+
+    return ret_code;
 }
 
-  }
+// From https://github.com/plageoj/urlencode
+String urlEncode(const char *msg)
+{
+    const char *hex = "0123456789ABCDEF";
+    String encodedMsg;
+    encodedMsg.reserve(strlen(msg) + 16);
+    encodedMsg = "";
+
+    while (*msg != '\0') {
+        if (('a' <= *msg && *msg <= 'z') || ('A' <= *msg && *msg <= 'Z') || ('0' <= *msg && *msg <= '9') || *msg == '-' || *msg == '_' || *msg == '.' || *msg == '~') {
+            encodedMsg += *msg;
+        } else {
+            encodedMsg += '%';
+            encodedMsg += hex[*msg >> 4];
+            encodedMsg += hex[*msg & 0xf];
+        }
+        msg++;
+    }
+    return encodedMsg;
+}
+
+void getLyrics() {
+    static String mxmCookie;
+    WiFiClientSecure client;
+    HTTPClient http;
+    p_lyric_next = p_lyric_current = p_lyric_start = NULL;
+    client.setInsecure(); //Bad!
+    String track = urlEncode(playback.track_name.c_str());
+    String artist = urlEncode(playback.artist_name.c_str());
+    String uri = "https://apic-desktop.musixmatch.com/ws/1.1/macro.subtitles.get?format=json&namespace=lyrics_synched&subtitle_format=lrc&app_id=web-desktop-app-v1.0&usertoken=" MM_TOKEN \
+        "&q_track="+ track +
+        "&q_artist=" + artist +
+        "&q_duration=" + playback.duration;
+    Serial.println(uri);
+
+    http.begin(client, uri);
+    const char* headers[] = {"Set-Cookie"};
+    http.collectHeaders(headers, 1);
+
+    if(mxmCookie != "") {
+        http.addHeader("Cookie", mxmCookie);
+    }
+
+    int code = http.GET();
+    Serial.print("Response code: ");
+    Serial.println(code);
+    if(code == 301) {
+        // Redirect: save the cookies and send them back.
+        mxmCookie = http.header("Set-Cookie");
+        delay(100);
+        http.addHeader("Cookie", mxmCookie);
+        code = http.GET();
+        Serial.print("Response code: ");
+        Serial.println(code);
+    } else if(code != 200) {
+        return;
+    }
+
+    StaticJsonDocument<192> filter;
+
+    JsonObject lyric_filter = filter["message"]["body"]["macro_calls"]["track.subtitles.get"].createNestedObject("message");
+    lyric_filter["header"]["available"] = true;
+    lyric_filter["body"]["subtitle_list"][0]["subtitle"]["subtitle_body"] = true;
+
+    DeserializationError error = deserializeJson(lyricDoc, client, DeserializationOption::Filter(filter), DeserializationOption::NestingLimit(12));
+    if (error) {
+        Serial.print(F("deserializeJson() failed: "));
+        Serial.println(error.f_str());
+        return;
+    }
+
+    int lyric_available = lyricDoc["message"]["body"]["macro_calls"]["track.subtitles.get"]["message"]["header"]["available"];
+    if(lyric_available) {
+        p_lyric_start = lyricDoc["message"]["body"]["macro_calls"]["track.subtitles.get"]["message"]["body"]["subtitle_list"][0]["subtitle"]["subtitle_body"];
+        p_lyric_next = p_lyric_start;
+    }
+
+    http.end();
+}
+
+void saveRefreshToken(String refreshToken) {
+    File f = LittleFS.open(F("/sptoken.txt"), "w");
+    if (!f) {
+        Serial.println(F("Failed to write sptoken"));
+        return;
+    }
+    f.println(refreshToken);
+    f.close();
+    Serial.println(F("Saved token"));
+}
+
+String loadRefreshToken() {
+    File f = LittleFS.open(F("/sptoken.txt"), "r");
+    if (!f) {
+        Serial.println(F("Failed to read sptoken"));
+        return "";
+    }
+    while(f.available()) {
+        String token = f.readStringUntil('\r');
+        Serial.println(F("Loaded token"));
+        f.close();
+        return token;
+    }
+    return "";
+}
+
+unsigned int parseInt(const char* ptr) {
+    unsigned int ret = 0;
+    while(*ptr >= '0' && *ptr <= '9') {
+        ret *= 10;
+        ret += (*ptr++ - '0');
+    }
+    return ret;
+}
+
+// Advance the lyric pointer to the next line to be displayed
+//[MM:SS.TT] Lyric Line\n
+bool nextLyric() {
+    unsigned int lyric_min = 0;
+    unsigned int lyric_sec = 0;
+    unsigned int lyric_ms = 0;
+    if(p_lyric_next && *p_lyric_next++ == '[') {
+        lyric_min = parseInt(p_lyric_next);
+        while(*p_lyric_next++ != ':');
+        lyric_sec = parseInt(p_lyric_next);
+        while(*p_lyric_next++ != '.');
+        lyric_ms = parseInt(p_lyric_next);
+        while(*p_lyric_next++ != ' ');
+
+        next_lyric_ms = lyric_min*60000 + lyric_sec*1000 + lyric_ms;
+
+        if(!*p_lyric_next) { // The last lyric is an empty string.
+            p_lyric_next = NULL;
+            next_lyric_ms = UINT_MAX;
+        }
+        return true;
+    } else {
+        p_lyric_next = NULL;
+        next_lyric_ms = UINT_MAX;
+        return false; //error
+    }
+}
 }
