@@ -1,26 +1,3 @@
-/*
-MIT License
-
-Copyright (c) 2022 Dolen Le
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-*/
 
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
@@ -86,7 +63,7 @@ String spotifyAuth() {
         server.send ( 302, "text/plain", "");
     });
 
-    // Retrieve auth code returned by Spotify
+
     server.on ("/callback/", [&oneWayCode](){
         if(!server.hasArg("code")) {
             server.send(500, "text/plain", "BAD ARGS");
@@ -126,7 +103,6 @@ void getToken(bool refresh, String code) {
         grantType = codeParam = "refresh_token";
     }
     String authorization = base64::encode(F(SP_CLIENT_ID ":" SP_CLIENT_SECRET), false);
-    // This will send the request to the server
     String content = "grant_type=" + grantType + "&" + codeParam + "=" + code + "&redirect_uri=" SP_REDIRECT_URI;
     String request = String("POST ") + url + " HTTP/1.1\r\n" +
                              "Host: " + host + "\r\n" +
@@ -195,7 +171,6 @@ int updatePlayback() {
         delay(10);
     }
 
-    // Discard header, get HTTP code
     while (client.connected()) {
         String line = client.readStringUntil('\n');
         if(line.startsWith(F("HTTP/1"))) {
@@ -241,7 +216,6 @@ int updatePlayback() {
     return ret_code;
 }
 
-// From https://github.com/plageoj/urlencode
 String urlEncode(const char *msg)
 {
     const char *hex = "0123456789ABCDEF";
@@ -288,7 +262,6 @@ void getLyrics() {
     Serial.print("Response code: ");
     Serial.println(code);
     if(code == 301) {
-        // Redirect: save the cookies and send them back.
         mxmCookie = http.header("Set-Cookie");
         delay(100);
         http.addHeader("Cookie", mxmCookie);
