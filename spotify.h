@@ -1,3 +1,27 @@
+/*
+MIT License
+
+Copyright (c) 2022 Dolen Le
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <time.h>
@@ -54,6 +78,7 @@ String spotifyAuth() {
     }
     Serial.println(F("mDNS started"));
 
+    // Redirect user to Spotify authorization (login) page
     server.on("/", []() {
         server.sendHeader("Location", F("https://accounts.spotify.com/authorize/?client_id=" SP_CLIENT_ID \
                                         "&response_type=code&redirect_uri=" SP_REDIRECT_URI \
@@ -92,72 +117,6 @@ void getToken(bool refresh, String code) {
     String url = "/api/token";
     if (!client.connect(host, port)) {
         Serial.println("connection failed");
-        return;
-    }
-
-
-
-  JsonObject lyric_filter = filter["message"]["body"]["macro_calls"]["track.subtitles.get"].createNestedObject("message");
-  lyric_filter["header"]["available"] = true;
-  lyric_filter["body"]["subtitle_list"][0]["subtitle"]["subtitle_body"] = true;
-
-  DeserializationError error = deserializeJson(lyricDoc, client, DeserializationOption::Filter(filter), DeserializationOption::NestingLimit(12));
-  if (error) {
-    Serial.print(F("deserializeJson() failed: "));
-    Serial.println(error.f_str());
-    return;
-  }
-
-  int lyric_available = lyricDoc["message"]["body"]["macro_calls"]["track.subtitles.get"]["message"]["header"]["available"];
-  if(lyric_available) {
-    p_lyric = lyricDoc["message"]["body"]["macro_calls"]["track.subtitles.get"]["message"]["body"]["subtitle_list"][0]["subtitle"]["subtitle_body"];
-  }
-
-  http.end();
-}
-
-void saveRefreshToken(String refreshToken) {
-  File f = LittleFS.open("/sptoken.txt", "w+");
-  if (!f) {
-    Serial.println("Failed to open sptoken");
-    return;
-  }
-  f.println(refreshToken);
-  f.close();
-  Serial.println("Saved sptoken");
-}
-
-String loadRefreshToken() {
-  File f = LittleFS.open(F("/sptoken.txt"), "r");
-  if (!f) {
-    Serial.println("Failed to open sptoken");
-    return "";
-  }
-  while(f.available()) {
-      //Lets read line by line from the file
-      String token = f.readStringUntil('\r');
-      Serial.print("Loaded Token: ");
-      Serial.println(token);
-      f.close();
-      return token;
-  }
-  return "";
-}
-
-int code = http.GET();
-    Serial.print("Response code: ");
-    Serial.println(code);
-    if(code == 301) {
-        mxmCookie = http.header("Set-Cookie");
-        delay(100);
-        http.addHeader("Cookie", mxmCookie);
-        code = http.GET();
-        Serial.print("Response code: ");
-        Serial.println(code);
-    } else if(code != 200) {
-        return;
-    }
- Serial.println("connection failed");
         return;
     }
 
@@ -236,6 +195,7 @@ int updatePlayback() {
         delay(10);
     }
 
+    // Discard header, get HTTP code
     while (client.connected()) {
         String line = client.readStringUntil('\n');
         if(line.startsWith(F("HTTP/1"))) {
@@ -246,55 +206,7 @@ int updatePlayback() {
         }
     }
 
-    StaticJsonDocument<192> filter;
-
-    JsonObject lyric_filter = filter["message"]["body"]["macro_calls"]["track.subtitles.get"].createNestedObject("message");
-    lyric_filter["header"]["available"] = true;
-    lyric_filter["body"]["subtitle_list"][0]["subtitle"]["subtitle_body"] = true;
-
-    DeserializationError error = deserializeJson(lyricDoc, client, DeserializationOption::Filter(filter), DeserializationOption::NestingLimit(12));
-    if (error) {
-        Serial.print(F("deserializeJson() failed: "));
-        Serial.println(error.f_str());
-        return;
-    }
-
-    int lyric_available = lyricDoc["message"]["body"]["macro_calls"]["track.subtitles.get"]["message"]["header"]["available"];
-    if(lyric_available) {
-        p_lyric_start = lyricDoc["message"]["body"]["macro_calls"]["track.subtitles.get"]["message"]["body"]["subtitle_list"][0]["subtitle"]["subtitle_body"];
-        p_lyric_next = p_lyric_start;
-    }
-
-    http.end();
-}
-
-void saveRefreshToken(String refreshToken) {
-    File f = LittleFS.open(F("/sptoken.txt"), "w");
-    if (!f) {
-        Serial.println(F("Failed to write sptoken"));
-        return;
-    }
-    f.println(refreshToken);
-    f.close();
-    Serial.println(F("Saved token"));
-}
-
-String loadRefreshToken() {
-    File f = LittleFS.open(F("/sptoken.txt"), "r");
-    if (!f) {
-        Serial.println(F("Failed to read sptoken"));
-        return "";
-    }
-    while(f.available()) {
-        String token = f.readStringUntil('\r');
-        Serial.println(F("Loaded token"));
-        f.close();
-        return token;
-    }
-    return "";
-}
-
-if(ret_code == 200) {
+    if(ret_code == 200) {
         StaticJsonDocument<192> filter;
         filter["progress_ms"] = true;
         filter["is_playing"] = true;
@@ -472,6 +384,9 @@ bool nextLyric() {
     }
 }
 
+// Print the string to the LCD with word wrapping.
+// The diplayed string is truncated if it is too long.
+// Returns the length of the string.
 size_t printWrap(const char* str, const char end) {
     lcd.clear();
     char c;
