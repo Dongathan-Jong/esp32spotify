@@ -18,12 +18,6 @@
 #include <SpotifyEsp32.h>
 #include <BleKeyboard.h>
 
-char* SSID = "Acanac18757";
-const char* PASSWORD = "1237nzokkg8r";
-const char* CLIENT_ID = "0fd6fefc1023457e8ebc913581318957";
-const char* CLIENT_SECRET = "a537a116bddd404bb9ea10f727b8a552";
-const char* REFRESH_TOKEN = "AQDYaQotym381ZQY0wQUHFMbRA7t_ElWhfJvd726zK_A9u4FrQRHCj-GxH1HVJ8bmU22n1kK88lqFk8H_TKqkhsMZRgkFcoUcTmShyA4gcfBrzh5URlINB_QGMKAjO8m-lU";
-
 Spotify sp(CLIENT_ID, CLIENT_SECRET);
 
 LiquidCrystal_I2C lcd(0x27, 20, 4);
