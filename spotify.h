@@ -1,7 +1,5 @@
 
-#define DISABLE_PLAYER
-#define DISABLE_ALBUM
-#define DISABLE_ARTIST
+
 #define DISABLE_AUDIOBOOKS
 #define DISABLE_CATEGORIES
 #define DISABLE_CHAPTERS
@@ -11,17 +9,20 @@
 #define DISABLE_PLAYLISTS
 #define DISABLE_SEARCH
 #define DISABLE_SHOWS
-#define DISABLE_TRACKS
 #define DISABLE_USER
 #define DISABLE_SIMPLIFIED
-#define DISABLE_WEB_SERVER
 
 #include <LiquidCrystal_I2C.h>
 #include <Arduino.h>
 #include <WiFi.h>
 #include <SpotifyEsp32.h>
+#include <BleKeyboard.h>
 
-
+char* SSID = "Acanac18757";
+const char* PASSWORD = "1237nzokkg8r";
+const char* CLIENT_ID = "0fd6fefc1023457e8ebc913581318957";
+const char* CLIENT_SECRET = "a537a116bddd404bb9ea10f727b8a552";
+const char* REFRESH_TOKEN = "AQDYaQotym381ZQY0wQUHFMbRA7t_ElWhfJvd726zK_A9u4FrQRHCj-GxH1HVJ8bmU22n1kK88lqFk8H_TKqkhsMZRgkFcoUcTmShyA4gcfBrzh5URlINB_QGMKAjO8m-lU";
 
 Spotify sp(CLIENT_ID, CLIENT_SECRET);
 
@@ -65,6 +66,22 @@ void loop() {
         lcd.setCursor(0,2);
         lcd.print(lastTrackname);
     }
+    if(bleKeyboard.isConnected()) {
+    Serial.println("Sent");
+    bleKeyboard.print("Request");
+
+    delay(1000);
+
+    Serial.println("Sending Enter key...");
+    bleKeyboard.write(KEY_RETURN);
+
+    delay(1000);
+
+    Serial.println("Sending Play/Pause media key...");
+    bleKeyboard.write(KEY_MEDIA_PLAY_PAUSE);
+
+    delay(1000);
+
 }
 
 void connect_to_wifi(){
