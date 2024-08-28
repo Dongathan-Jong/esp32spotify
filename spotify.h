@@ -1,26 +1,19 @@
 
-
-#define DISABLE_AUDIOBOOKS
-#define DISABLE_CATEGORIES
-#define DISABLE_CHAPTERS
-#define DISABLE_EPISODES
-#define DISABLE_GENRES
-#define DISABLE_MARKETS
-#define DISABLE_PLAYLISTS
-#define DISABLE_SEARCH
-#define DISABLE_SHOWS
-#define DISABLE_USER
-#define DISABLE_SIMPLIFIED
-
 #include <LiquidCrystal_I2C.h>
 #include <Arduino.h>
 #include <WiFi.h>
 #include <SpotifyEsp32.h>
-#include <BleKeyboard.h>
+
+
+bool newSong = false;
 
 Spotify sp(CLIENT_ID, CLIENT_SECRET);
 
 LiquidCrystal_I2C lcd(0x27, 20, 4);
+String lastArtist;
+String lastTrackname;
+String currentArtist;
+String currentTrackname;
 
 void setup() {
 
@@ -41,41 +34,63 @@ void setup() {
 }
 
 void loop() {
-    static String lastArtist;
-    static String lastTrackname;
     
-    String currentArtist = sp.current_artist_names();
-    String currentTrackname = sp.current_track_name();
+    
+    currentArtist = sp.current_artist_names();
+    currentTrackname = sp.current_track_name();
     
     if (lastArtist != currentArtist && currentArtist != "Something went wrong" && !currentArtist.isEmpty()) {
+        newSong = true;
         lastArtist = currentArtist;
-        Serial.println("Artist: " + lastArtist);
-        lcd.setCursor(0,0);
-        lcd.print(lastArtist);
+        
+        refreshSong();
+        
+        Serial.println("New Artist");
     }
+
+        
     
     if (lastTrackname != currentTrackname && currentTrackname != "Something went wrong" && currentTrackname != "null") {
+        newSong = true;
+        
         lastTrackname = currentTrackname;
-        Serial.println("Track: " + lastTrackname);
-        lcd.setCursor(0,2);
-        lcd.print(lastTrackname);
+        refreshSong();
+        
+        Serial.println("New Song");
     }
-    if(bleKeyboard.isConnected()) {
-    Serial.println("Sent");
-    bleKeyboard.print("Request");
+}
 
-    delay(1000);
-
-    Serial.println("Sending Enter key...");
-    bleKeyboard.write(KEY_RETURN);
-
-    delay(1000);
-
-    Serial.println("Sending Play/Pause media key...");
-    bleKeyboard.write(KEY_MEDIA_PLAY_PAUSE);
-
-    delay(1000);
-
+void refreshSong()
+{
+  if(newSong)
+  {
+        lcd.clear();
+        Serial.println("Artist: " + lastArtist);
+        Serial.println("Song: " + lastTrackname);
+        if(lastArtist.length() > 19)
+        {
+          lcd.setCursor(0,0);
+          lcd.print(lastArtist.substring(0,19));
+          lcd.setCursor(0,1);
+          lcd.print(lastArtist.substring(20,40));
+        }
+        else{
+          lcd.setCursor(0,0);
+          lcd.print(lastArtist);
+        }
+        if(lastTrackname.length() > 19)
+        {
+          lcd.setCursor(0,2);
+          lcd.print(lastTrackname.substring(0,19));
+          lcd.setCursor(0,3);
+          lcd.print(lastTrackname.substring(20,40));
+        }
+        else{
+          lcd.setCursor(0,2);
+          lcd.print(lastTrackname);
+        }
+  }
+        newSong = false;
 }
 
 void connect_to_wifi(){
